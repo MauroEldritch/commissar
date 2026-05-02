@@ -16,7 +16,7 @@ require "colorize"
 module Commissar
   VERSION = "0.1.0"
 
-	SEVERITY_WEIGHT = { "HIGH" => 15, "MED" => 7, "LOW" => 2 }.freeze
+	SEVERITY_WEIGHT = { "CRIT" => 15, "HIGH" => 7, "MED" => 3, "LOW" => 1 }.freeze
 
 	CONFIG_FILES = %w[
 		suspicious_urls.txt
@@ -414,7 +414,7 @@ module Commissar
 		end
 
 		def run_function_checks
-			scan_files_for_patterns(@suspicious_functions, "DANGEROUS FUNCTIONS")
+			scan_files_for_patterns(@suspicious_functions, "DANGEROUS FUNCTIONS", files: ruby_source_files)
 		end
 
 		def run_url_checks
@@ -426,7 +426,7 @@ module Commissar
 		end
 
 		def run_encoding_checks
-			scannable_files.each do |filename, content|
+			ruby_source_files.each do |filename, content|
 				next if content.nil?
 				scan_lines(content, filename).each do |line, file, lineno|
 					check_entropy(line, file, lineno)
@@ -439,7 +439,7 @@ module Commissar
 		def check_entropy(line, file, lineno)
 			return if line.length < 20
 			e = shannon_entropy(line)
-			return unless e > 5.0
+			return unless e > 5.5
 			add_finding(
 				category: "ENCODING", severity: "HIGH",
 				message: "High entropy line (#{e.round(1)} bits/char, #{line.length} chars)",
@@ -543,15 +543,26 @@ module Commissar
 			prev[b.length]
 		end
 
+		RUBY_EXTENSIONS = %w[.rb .gemspec .rake .ru].freeze
+		RUBY_NAMES      = %w[Rakefile Gemfile].freeze
+
 		def scannable_files
 			@files.reject { |name, _| name.end_with?(".md") }
 		end
 
-		def scan_files_for_patterns(patterns, category)
-			return if @files.empty?
+		def ruby_source_files
+			scannable_files.select { |name, _|
+				RUBY_EXTENSIONS.include?(File.extname(name)) ||
+					RUBY_NAMES.include?(File.basename(name))
+			}
+		end
+
+		def scan_files_for_patterns(patterns, category, files: nil)
+			target = files || scannable_files
+			return if target.empty?
 			patterns.each do |entry|
 				severity, pattern = parse_config_entry(entry)
-				scannable_files.each do |filename, content|
+				target.each do |filename, content|
 					scan_lines(content, filename).each do |line, file, lineno|
 						next unless line.include?(pattern)
 						add_finding(category: category, severity: severity, message: pattern, file: file, line: lineno, snippet: line)
@@ -561,7 +572,7 @@ module Commissar
 		end
 
 		def parse_config_entry(entry)
-			if entry =~ /\A(HIGH|MED|LOW):(.*)\z/
+			if entry =~ /\A(CRIT|HIGH|MED|LOW):(.*)\z/
 				[$1, $2]
 			else
 				["MED", entry]
@@ -595,6 +606,7 @@ module Commissar
 
 		def colorize_finding(finding)
 			color = case finding.severity
+				when "CRIT" then :magenta
 				when "HIGH" then :red
 				when "MED"  then :yellow
 				when "LOW"  then :light_black

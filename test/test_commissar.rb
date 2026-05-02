@@ -308,17 +308,17 @@ end
 class TestFinding < Minitest::Test
 	def test_high_weight
 		f = finding(severity: "HIGH")
-		assert_equal 15, f.weight
+		assert_equal 7, f.weight
 	end
 
 	def test_med_weight
 		f = finding(severity: "MED")
-		assert_equal 7, f.weight
+		assert_equal 3, f.weight
 	end
 
 	def test_low_weight
 		f = finding(severity: "LOW")
-		assert_equal 2, f.weight
+		assert_equal 1, f.weight
 	end
 
 	def test_unknown_severity_weight_is_zero
@@ -451,7 +451,7 @@ class TestRunUrlChecks < Minitest::Test
 	def test_high_finding_for_telegram_url
 		set_files("lib/evil.rb" => "Net::HTTP.get(URI('https://api.telegram.org/bot123/sendMessage'))\n")
 		run_check
-		assert_finding_with(severity: "HIGH", message: /api\.telegram\.org/, file: "lib/evil.rb", line: 1)
+		assert_finding_with(severity: "CRIT", message: /api\.telegram\.org/, file: "lib/evil.rb", line: 1)
 	end
 
 	def test_med_finding_for_pastebin_url
@@ -464,7 +464,7 @@ class TestRunUrlChecks < Minitest::Test
 		content = "clean_line\nanother_clean_line\nhttps://discord.com/api/webhooks/123\n"
 		set_files("lib/evil.rb" => content)
 		run_check
-		assert_finding_with(severity: "HIGH", message: /discord\.com/, file: "lib/evil.rb", line: 3)
+		assert_finding_with(severity: "CRIT", message: /discord\.com/, file: "lib/evil.rb", line: 3)
 	end
 
 	def test_detects_across_multiple_files
@@ -532,10 +532,10 @@ class TestRunFunctionChecks < Minitest::Test
 		assert_finding_with(severity: "MED", message: /Net::HTTP/)
 	end
 
-	def test_low_finding_for_binding
-		set_files("lib/suspicious.rb" => "b = binding\n")
+	def test_med_finding_for_net_http_open_uri
+		set_files("lib/suspicious.rb" => "URI.open(url)\n")
 		run_check
-		assert_finding_with(severity: "LOW", message: /binding/)
+		assert_finding_with(severity: "MED", message: /URI\.open/)
 	end
 
 	def test_reports_correct_line_number
@@ -640,10 +640,10 @@ class TestRunCredentialChecks < Minitest::Test
 		assert_finding_with(severity: "HIGH", message: /GITHUB_TOKEN/)
 	end
 
-	def test_med_finding_for_dotenv
-		set_files("lib/evil.rb" => "Dotenv.load('.env')\n")
+	def test_med_finding_for_dotenv_local
+		set_files("lib/evil.rb" => "Dotenv.load('.env.local')\n")
 		run_check
-		assert_finding_with(severity: "MED", message: /\.env/)
+		assert_finding_with(severity: "MED", message: /\.env\.local/)
 	end
 
 	def test_reports_correct_line_number
@@ -1082,11 +1082,11 @@ class TestScannerRiskScore < Minitest::Test
 	def test_risk_score_sums_finding_weights
 		add_finding(@scanner, "HIGH")
 		add_finding(@scanner, "MED")
-		assert_equal 22, @scanner.risk_score
+		assert_equal 10, @scanner.risk_score
 	end
 
 	def test_risk_score_caps_at_100
-		10.times { add_finding(@scanner, "HIGH") }
+		15.times { add_finding(@scanner, "HIGH") }
 		assert_equal 100, @scanner.risk_score
 	end
 

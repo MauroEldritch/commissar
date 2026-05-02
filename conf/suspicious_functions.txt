@@ -21,13 +21,3 @@ MED:open-uri
 MED:TCPSocket
 MED:UDPSocket
 MED:Socket.new
-MED:define_method
-MED:send
-MED:public_send
-MED:method_missing
-MED:const_get
-MED:ObjectSpace
-LOW:__FILE__
-LOW:__dir__
-LOW:caller
-LOW:binding

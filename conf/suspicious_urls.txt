@@ -1,7 +1,7 @@
-HIGH:api.telegram.org
-HIGH:t.me
-HIGH:discord.com/api/webhooks
-HIGH:hooks.slack.com
+CRIT:api.telegram.org
+CRIT:t.me
+CRIT:discord.com/api/webhooks
+CRIT:hooks.slack.com
 MED:pastebin.com
 MED:paste.ee
 MED:hastebin.com
