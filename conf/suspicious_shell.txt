@@ -1,0 +1,15 @@
+HIGH:curl -X POST
+HIGH:curl --data
+HIGH:curl -d
+HIGH:curl -F
+HIGH:curl -T
+HIGH:wget --post-data
+HIGH:wget --post-file
+HIGH:wget -O-
+MED:Net::HTTP::Post.new
+MED:Net::HTTP.post_form
+MED:RestClient.post
+MED:HTTParty.post
+MED:Faraday.post
+MED:Excon.post
+MED:http.post

@@ -1,0 +1,88 @@
+#!/usr/bin/env ruby
+
+require "optparse"
+require_relative "../lib/commissar"
+
+options = { format: nil, color: true, output: nil, local: nil }
+
+OptionParser.new do |opts|
+	opts.banner = <<~BANNER
+		Usage:
+		  commissar <gem_name> [version] [options]
+		  commissar --local PATH [options]
+
+		Examples:
+		  commissar rails
+		  commissar nokogiri 1.16.0
+		  commissar --local /tmp/evil.gem
+		  commissar rails --no-color
+		  commissar rails --format table
+		  commissar rails --format json --output results.json
+		  commissar rails --output results.csv
+
+		Options:
+	BANNER
+
+	opts.on("--local PATH", "Scan a local .gem file") do |path|
+		options[:local] = path
+	end
+
+	opts.on("--no-color", "Disable colored output") do
+		options[:color] = false
+	end
+
+	opts.on("--output FILE", "Write output to FILE") do |file|
+		options[:output] = file
+	end
+
+	opts.on("--format FORMAT", %w[text csv json table], "Output format: text, csv, json, table") do |fmt|
+		options[:format] = fmt.to_sym
+	end
+
+	opts.on("-h", "--help", "Show this help") do
+		puts opts
+		exit
+	end
+end.tap { |parser| @parser = parser }.parse!
+
+Commissar::Config.bootstrap_user_dir
+String.disable_colorization = !options[:color]
+
+if options[:local]
+	local_path = File.expand_path(options[:local])
+	unless File.exist?(local_path)
+		warn "File not found: #{local_path}".colorize(:red)
+		exit 1
+	end
+	gem_name = File.basename(local_path, ".gem").sub(/-\d+\.\d+\.\d+.*$/, "")
+	scanner  = Commissar::Scanner.new(gem_name, local_path: local_path)
+elsif ARGV.empty?
+	puts @parser
+	exit 1
+else
+	scanner = Commissar::Scanner.new(ARGV[0], version: ARGV[1])
+end
+
+scanner.scan
+
+terminal_format = options[:format] || :text
+scanner.report(format: terminal_format)
+
+if options[:output]
+	file_format = options[:format]
+	unless file_format
+		ext = File.extname(options[:output]).downcase
+		file_format = case ext
+			when ".csv"  then :csv
+			when ".json" then :json
+			else              :text
+		end
+	end
+
+	String.disable_colorization = true
+	File.open(options[:output], "w") do |f|
+		scanner.report(format: file_format, io: f)
+	end
+	String.disable_colorization = !options[:color]
+	warn "Output written to #{options[:output]}".colorize(:cyan)
+end
