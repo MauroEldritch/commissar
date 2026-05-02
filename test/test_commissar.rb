@@ -212,7 +212,7 @@ class TestCheckVersionDiff < Minitest::Test
 	def test_low_finding_for_new_file
 		prev = { "lib/a.rb" => "module A; end\n", "lib/b.rb" => "module B; end\n" }
 		run_diff(prev)
-		assert_finding_with(severity: "LOW", message: /lib\/c\.rb/)
+		assert_finding_with(severity: "INFO", message: /lib\/c\.rb/)
 	end
 
 	def test_low_finding_for_removed_file
@@ -223,7 +223,7 @@ class TestCheckVersionDiff < Minitest::Test
 			"lib/d.rb" => "module D; end\n"
 		}
 		run_diff(prev)
-		assert_finding_with(severity: "LOW", message: /lib\/d\.rb/)
+		assert_finding_with(severity: "INFO", message: /lib\/d\.rb/)
 	end
 
 	def test_low_finding_for_modified_file
@@ -233,7 +233,7 @@ class TestCheckVersionDiff < Minitest::Test
 			"lib/c.rb" => "module C; end\n"
 		}
 		run_diff(prev)
-		assert_finding_with(severity: "LOW", message: /lib\/b\.rb/)
+		assert_finding_with(severity: "INFO", message: /lib\/b\.rb/)
 	end
 
 	def test_detects_multiple_changes
@@ -793,7 +793,7 @@ class TestRunWeb3Checks < Minitest::Test
 	end
 
 	def test_low_finding_for_metamask_reference
-		set_files("lib/suspicious.rb" => "# connects to metamask\n")
+		set_files("lib/suspicious.rb" => "require 'metamask'\n")
 		run_check
 		assert_finding_with(severity: "LOW", message: /metamask/)
 	end

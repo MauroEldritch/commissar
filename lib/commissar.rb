@@ -16,7 +16,7 @@ require "colorize"
 module Commissar
   VERSION = "0.1.0"
 
-	SEVERITY_WEIGHT = { "CRIT" => 15, "HIGH" => 7, "MED" => 3, "LOW" => 1 }.freeze
+	SEVERITY_WEIGHT = { "CRIT" => 15, "HIGH" => 7, "MED" => 3, "LOW" => 1, "INFO" => 0 }.freeze
 
 	CONFIG_FILES = %w[
 		suspicious_urls.txt
@@ -302,14 +302,14 @@ module Commissar
 			current_keys = Set.new(@files.keys)
 			prev_keys    = Set.new(prev_files.keys)
 			(current_keys - prev_keys).each do |f|
-				add_finding(category: "DIFF", severity: "LOW", message: "New file vs #{prev_version}: #{f}")
+				add_finding(category: "DIFF", severity: "INFO", message: "New file vs #{prev_version}: #{f}")
 			end
 			(prev_keys - current_keys).each do |f|
-				add_finding(category: "DIFF", severity: "LOW", message: "Removed vs #{prev_version}: #{f}")
+				add_finding(category: "DIFF", severity: "INFO", message: "Removed vs #{prev_version}: #{f}")
 			end
 			(current_keys & prev_keys).each do |f|
 				next if @files[f] == prev_files[f]
-				add_finding(category: "DIFF", severity: "LOW", message: "Modified vs #{prev_version}: #{f}")
+				add_finding(category: "DIFF", severity: "INFO", message: "Modified vs #{prev_version}: #{f}")
 			end
 		end
 
@@ -414,11 +414,11 @@ module Commissar
 		end
 
 		def run_function_checks
-			scan_files_for_patterns(@suspicious_functions, "DANGEROUS FUNCTIONS", files: ruby_source_files)
+			scan_files_for_patterns(@suspicious_functions, "DANGEROUS FUNCTIONS", files: ruby_source_files, word_boundary: true)
 		end
 
 		def run_url_checks
-			scan_files_for_patterns(@suspicious_urls, "SUSPICIOUS URLS")
+			scan_files_for_patterns(@suspicious_urls, "SUSPICIOUS URLS", word_boundary: true)
 		end
 
 		def run_shell_checks
@@ -429,6 +429,7 @@ module Commissar
 			ruby_source_files.each do |filename, content|
 				next if content.nil?
 				scan_lines(content, filename).each do |line, file, lineno|
+					next if line.lstrip.start_with?("#")
 					check_entropy(line, file, lineno)
 					check_line_length(line, file, lineno)
 					check_homoglyphs(line, file, lineno)
@@ -489,6 +490,7 @@ module Commissar
 			scannable_files.each do |filename, content|
 				next if content.nil?
 				scan_lines(content, filename).each do |line, file, lineno|
+					next if line.lstrip.start_with?("#")
 					wallet_patterns.each do |severity, label, re|
 						next unless line.match?(re)
 						add_finding(category: "WEB3", severity: severity, message: label, file: file, line: lineno, snippet: line)
@@ -498,7 +500,7 @@ module Commissar
 						add_finding(category: "WEB3", severity: "HIGH", message: "Clipboard access: #{pattern}", file: file, line: lineno, snippet: line)
 					end
 					web3_refs.each do |ref|
-						next unless line.downcase.include?(ref)
+						next unless line.downcase.match?(/\b#{Regexp.escape(ref)}\b/)
 						add_finding(category: "WEB3", severity: "LOW", message: "Web3 reference: #{ref}", file: file, line: lineno, snippet: line)
 					end
 				end
@@ -557,14 +559,16 @@ module Commissar
 			}
 		end
 
-		def scan_files_for_patterns(patterns, category, files: nil)
+		def scan_files_for_patterns(patterns, category, files: nil, word_boundary: false)
 			target = files || scannable_files
 			return if target.empty?
 			patterns.each do |entry|
 				severity, pattern = parse_config_entry(entry)
+				matcher = word_boundary ? /\b#{Regexp.escape(pattern)}\b/ : nil
 				target.each do |filename, content|
 					scan_lines(content, filename).each do |line, file, lineno|
-						next unless line.include?(pattern)
+						next if line.lstrip.start_with?("#")
+					next unless matcher ? line.match?(matcher) : line.include?(pattern)
 						add_finding(category: category, severity: severity, message: pattern, file: file, line: lineno, snippet: line)
 					end
 				end
@@ -610,6 +614,7 @@ module Commissar
 				when "HIGH" then :red
 				when "MED"  then :yellow
 				when "LOW"  then :light_black
+				when "INFO" then :cyan
 			end
 			finding.to_s.colorize(color)
 		end
