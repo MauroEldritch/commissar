@@ -36,8 +36,6 @@ Output groups findings by category with severity (`CRIT`, `HIGH`, `MED`, `LOW`, 
 
 Pattern lists live in the `conf/` directory of the repo (or the gem's bundled `conf/` when installed). Edit those files directly to add or remove patterns.
 
-Load order: `./conf/` → gem defaults.
-
 Files:
 
 | File | Purpose |
