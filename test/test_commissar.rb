@@ -306,19 +306,29 @@ class TestConfig < Minitest::Test
 end
 
 class TestFinding < Minitest::Test
+	def test_crit_weight
+		f = finding(severity: "CRIT")
+		assert_equal 25, f.weight
+	end
+
 	def test_high_weight
 		f = finding(severity: "HIGH")
-		assert_equal 7, f.weight
+		assert_equal 10, f.weight
 	end
 
 	def test_med_weight
 		f = finding(severity: "MED")
-		assert_equal 3, f.weight
+		assert_equal 5, f.weight
 	end
 
 	def test_low_weight
 		f = finding(severity: "LOW")
-		assert_equal 1, f.weight
+		assert_equal 3, f.weight
+	end
+
+	def test_info_weight
+		f = finding(severity: "INFO")
+		assert_equal 0, f.weight
 	end
 
 	def test_unknown_severity_weight_is_zero
@@ -413,27 +423,45 @@ class TestParseConfigEntry < Minitest::Test
 	end
 
 	def test_parses_high_prefix
-		severity, pattern = @scanner.send(:parse_config_entry, "HIGH:api.telegram.org")
+		severity, pattern, antipatterns = @scanner.send(:parse_config_entry, "HIGH:api.telegram.org")
 		assert_equal "HIGH", severity
 		assert_equal "api.telegram.org", pattern
+		assert_empty antipatterns
 	end
 
 	def test_parses_med_prefix
-		severity, pattern = @scanner.send(:parse_config_entry, "MED:pastebin.com")
+		severity, pattern, antipatterns = @scanner.send(:parse_config_entry, "MED:pastebin.com")
 		assert_equal "MED", severity
 		assert_equal "pastebin.com", pattern
+		assert_empty antipatterns
 	end
 
 	def test_parses_low_prefix
-		severity, pattern = @scanner.send(:parse_config_entry, "LOW:binding")
+		severity, pattern, antipatterns = @scanner.send(:parse_config_entry, "LOW:binding")
 		assert_equal "LOW", severity
 		assert_equal "binding", pattern
+		assert_empty antipatterns
 	end
 
 	def test_defaults_to_med_without_prefix
-		severity, pattern = @scanner.send(:parse_config_entry, "somepattern.com")
+		severity, pattern, antipatterns = @scanner.send(:parse_config_entry, "somepattern.com")
 		assert_equal "MED", severity
 		assert_equal "somepattern.com", pattern
+		assert_empty antipatterns
+	end
+
+	def test_parses_antipatterns
+		severity, pattern, antipatterns = @scanner.send(:parse_config_entry, "HIGH:eval:&:binding")
+		assert_equal "HIGH", severity
+		assert_equal "eval", pattern
+		assert_equal ["&", "binding"], antipatterns
+	end
+
+	def test_single_antipattern
+		severity, pattern, antipatterns = @scanner.send(:parse_config_entry, "HIGH:instance_eval:&")
+		assert_equal "HIGH", severity
+		assert_equal "instance_eval", pattern
+		assert_equal ["&"], antipatterns
 	end
 end
 
@@ -543,6 +571,24 @@ class TestRunFunctionChecks < Minitest::Test
 		set_files("lib/evil.rb" => content)
 		run_check
 		assert_finding_with(severity: "HIGH", message: /\Aeval\z/, file: "lib/evil.rb", line: 3)
+	end
+
+	def test_no_finding_for_instance_eval_with_block
+		set_files("lib/clean.rb" => "instance_eval(&block)\n")
+		run_check
+		assert_empty @scanner.findings
+	end
+
+	def test_no_finding_for_class_eval_with_file_tracking
+		set_files("lib/clean.rb" => "class_eval <<~RUBY, __FILE__, __LINE__ + 1\n")
+		run_check
+		assert_empty @scanner.findings
+	end
+
+	def test_no_finding_for_eval_with_binding
+		set_files("lib/clean.rb" => "@context = eval(\"self\", block.binding)\n")
+		run_check
+		assert_empty @scanner.findings
 	end
 
 	private
@@ -774,6 +820,13 @@ class TestRunWeb3Checks < Minitest::Test
 		assert_finding_with(severity: "HIGH", message: /ETH wallet/, file: "lib/evil.rb", line: 1)
 	end
 
+	def test_crit_finding_for_known_bad_wallet
+		tornado = "0x8589427373D6D84E98730D7795D8f6f8731FDA16"
+		set_files("lib/evil.rb" => "send_to(\"#{tornado}\")\n")
+		run_check
+		assert_finding_with(severity: "CRIT", message: /Tornado Cash/, file: "lib/evil.rb", line: 1)
+	end
+
 	def test_high_finding_for_btc_address
 		set_files("lib/evil.rb" => "addr = \"#{BTC_ADDRESS}\"\n")
 		run_check
@@ -790,18 +843,6 @@ class TestRunWeb3Checks < Minitest::Test
 		set_files("lib/evil.rb" => "Clipboard.copy(wallet_address)\n")
 		run_check
 		assert_finding_with(severity: "HIGH", message: /Clipboard/)
-	end
-
-	def test_low_finding_for_metamask_reference
-		set_files("lib/suspicious.rb" => "require 'metamask'\n")
-		run_check
-		assert_finding_with(severity: "LOW", message: /metamask/)
-	end
-
-	def test_low_finding_for_web3_reference
-		set_files("lib/suspicious.rb" => "require 'ethers'\n")
-		run_check
-		assert_finding_with(severity: "LOW", message: /ethers/)
 	end
 
 	def test_reports_correct_line_number
@@ -1082,7 +1123,7 @@ class TestScannerRiskScore < Minitest::Test
 	def test_risk_score_sums_finding_weights
 		add_finding(@scanner, "HIGH")
 		add_finding(@scanner, "MED")
-		assert_equal 10, @scanner.risk_score
+		assert_equal 15, @scanner.risk_score
 	end
 
 	def test_risk_score_caps_at_100

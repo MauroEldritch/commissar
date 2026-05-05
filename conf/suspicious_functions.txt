@@ -1,12 +1,12 @@
-HIGH:eval
-HIGH:instance_eval
-HIGH:class_eval
-HIGH:module_eval
-HIGH:Kernel.system
-HIGH:Kernel.exec
+HIGH:eval:&:binding:--eval
+HIGH:instance_eval:&:{: do:__FILE__
+HIGH:class_eval:&:__FILE__:{: do
+HIGH:module_eval:&:__FILE__:{: do:get_file_and_line_from_caller
+HIGH:Kernel.system:(*
+HIGH:Kernel.exec:(*
 HIGH:Kernel.spawn
 HIGH:Process.spawn
-HIGH:IO.popen
+HIGH:IO.popen:%w[
 HIGH:Open3.popen2
 HIGH:Open3.popen3
 HIGH:Open3.capture2
@@ -15,9 +15,9 @@ HIGH:Open3.pipeline
 HIGH:Base64.decode64
 HIGH:Base64.strict_decode64
 HIGH:Zlib::Inflate
-MED:Net::HTTP
+MED:Net::HTTP:Gem::Net::HTTP
 MED:URI.open
 MED:open-uri
-MED:TCPSocket
+MED:TCPSocket:kind_of?
 MED:UDPSocket
-MED:Socket.new
+MED:Socket.new: engine

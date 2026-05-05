@@ -14,20 +14,9 @@ require "csv"
 require "colorize"
 
 module Commissar
-  VERSION = "0.1.0"
-
-	SEVERITY_WEIGHT = { "CRIT" => 15, "HIGH" => 7, "MED" => 3, "LOW" => 1, "INFO" => 0 }.freeze
-
-	CONFIG_FILES = %w[
-		suspicious_urls.txt
-		suspicious_functions.txt
-		suspicious_shell.txt
-		credential_paths.txt
-		top_gems.txt
-	].freeze
+	VERSION = "0.1.0"
 
 	module Config
-		USER_DIR    = File.expand_path("~/.config/commissar")
 		BUNDLED_DIR = File.expand_path("../../conf", __FILE__)
 
 		def self.load(filename)
@@ -38,26 +27,53 @@ module Commissar
 				.reject { |l| l.strip.empty? || l.strip.start_with?("#") }
 		end
 
+		def self.load_weights
+			path = resolve("severity.txt")
+			return {} unless path
+
+			File.readlines(path, chomp: true)
+				.reject { |l| l.strip.empty? || l.strip.start_with?("#") }
+				.each_with_object({}) do |line, hash|
+					k, v = line.split(":", 2)
+					hash[k.strip] = v.to_i if k && v
+				end
+		end
+
+		def self.load_complex_gems
+			path = resolve("complex_gems.txt")
+			return {} unless path
+
+			File.readlines(path, chomp: true)
+				.reject { |l| l.strip.empty? || l.strip.start_with?("#") }
+				.each_with_object({}) do |line, hash|
+					name, category = line.split(":", 2)
+					hash[name.strip] = category.strip if name && category
+				end
+		end
+
+		def self.load_known_wallets
+			path = resolve("known_bad_wallets.txt")
+			return {} unless path
+
+			File.readlines(path, chomp: true)
+				.reject { |l| l.strip.empty? || l.strip.start_with?("#") }
+				.each_with_object({}) do |line, hash|
+					addr, label = line.split(":", 2)
+					next unless addr && label
+					hash[addr.strip] = label.strip
+				end
+		end
+
 		def self.resolve(filename)
 			candidates = [
-				File.join(USER_DIR, filename),
 				File.join(Dir.pwd, "conf", filename),
 				File.join(BUNDLED_DIR, filename)
 			]
 			candidates.find { |p| File.exist?(p) }
 		end
-
-		def self.bootstrap_user_dir
-			return if File.exist?(USER_DIR)
-
-			FileUtils.mkdir_p(USER_DIR)
-			CONFIG_FILES.each do |f|
-				src = File.join(BUNDLED_DIR, f)
-				FileUtils.cp(src, File.join(USER_DIR, f)) if File.exist?(src)
-			end
-			puts "Created ~/.config/commissar/ with default config files.".colorize(:cyan)
-		end
 	end
+
+	SEVERITY_WEIGHT = Config.load_weights.freeze
 
 	Finding = Struct.new(:category, :severity, :message, :file, :line, :snippet, keyword_init: true) do
 		def weight
@@ -89,11 +105,14 @@ module Commissar
 			@suspicious_functions = Config.load("suspicious_functions.txt")
 			@suspicious_shell     = Config.load("suspicious_shell.txt")
 			@credential_paths     = Config.load("credential_paths.txt")
+			@clipboard_patterns   = Config.load("clipboard_patterns.txt")
+			@known_bad_wallets    = Config.load_known_wallets
+			@complex_gems         = Config.load_complex_gems
 			@top_gems             = Config.load("top_gems.txt")
 		end
 
-		def scan
-			puts "\n#{"[*] Scanning: #{gem_name}".colorize(:white)} #{version_label}"
+		def scan(quiet: false)
+			puts "\n#{"[*] Scanning: #{gem_name}".colorize(:white)} #{version_label}" unless quiet
 			fetch_metadata
 			fetch_and_unpack
 			run_metadata_checks
@@ -138,6 +157,7 @@ module Commissar
 				end
 			end
 			io.puts "\n#{score_line}"
+			io.puts complex_gem_note.colorize(:cyan) if complex_gem_note
 		end
 
 		def report_csv(io)
@@ -150,7 +170,7 @@ module Commissar
 
 		def report_json(io)
 			v = @version || @metadata["version"]
-			io.puts JSON.pretty_generate(
+			payload = {
 				gem:        gem_name,
 				version:    v,
 				scanned_at: Time.now.iso8601,
@@ -160,7 +180,9 @@ module Commissar
 					{ category: f.category, severity: f.severity, message: f.message,
 					  file: f.file, line: f.line, snippet: f.snippet }
 				}
-			)
+			}
+			payload[:complex_gem_note] = complex_gem_note if complex_gem_note
+			io.puts JSON.pretty_generate(payload)
 		end
 
 		def report_table(io)
@@ -198,6 +220,7 @@ module Commissar
 			end
 			io.puts sep
 			io.puts "\n#{score_line}"
+			io.puts complex_gem_note.colorize(:cyan) if complex_gem_note
 		end
 
 		def fetch_metadata
@@ -481,27 +504,29 @@ module Commissar
 		def run_web3_checks
 			return if @files.empty?
 			wallet_patterns = [
-				["HIGH", "ETH wallet address", /0x[a-fA-F0-9]{40}\b/],
-				["HIGH", "BTC wallet address", /\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b/],
-				["HIGH", "BTC bech32 address", /\bbc1[a-z0-9]{6,87}\b/i]
+				["ETH wallet address", /0x[a-fA-F0-9]{40}\b/],
+				["BTC wallet address", /\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b/],
+				["BTC bech32 address", /\bbc1[a-z0-9]{6,87}\b/i]
 			]
-			clipboard_patterns = %w[xclip pbcopy pbpaste xdotool Clipboard.]
-			web3_refs          = %w[metamask ethers wagmi viem hardhat truffle]
 			scannable_files.each do |filename, content|
 				next if content.nil?
 				scan_lines(content, filename).each do |line, file, lineno|
 					next if line.lstrip.start_with?("#")
-					wallet_patterns.each do |severity, label, re|
-						next unless line.match?(re)
-						add_finding(category: "WEB3", severity: severity, message: label, file: file, line: lineno, snippet: line)
+					wallet_patterns.each do |label, re|
+						m = line.match(re)
+						next unless m
+						addr      = m[0]
+						bad_label = @known_bad_wallets[addr] || @known_bad_wallets[addr.downcase]
+						if bad_label
+							add_finding(category: "WEB3", severity: "CRIT", message: "Known malicious wallet (#{bad_label}): #{addr}", file: file, line: lineno, snippet: line)
+						else
+							add_finding(category: "WEB3", severity: "HIGH", message: label, file: file, line: lineno, snippet: line)
+						end
 					end
-					clipboard_patterns.each do |pattern|
+					@clipboard_patterns.each do |entry|
+						severity, pattern = parse_config_entry(entry)
 						next unless line.include?(pattern)
-						add_finding(category: "WEB3", severity: "HIGH", message: "Clipboard access: #{pattern}", file: file, line: lineno, snippet: line)
-					end
-					web3_refs.each do |ref|
-						next unless line.downcase.match?(/\b#{Regexp.escape(ref)}\b/)
-						add_finding(category: "WEB3", severity: "LOW", message: "Web3 reference: #{ref}", file: file, line: lineno, snippet: line)
+						add_finding(category: "WEB3", severity: severity, message: "Clipboard access: #{pattern}", file: file, line: lineno, snippet: line)
 					end
 				end
 			end
@@ -548,8 +573,10 @@ module Commissar
 		RUBY_EXTENSIONS = %w[.rb .gemspec .rake .ru].freeze
 		RUBY_NAMES      = %w[Rakefile Gemfile].freeze
 
+		SKIP_EXTENSIONS = %w[.md .rdoc .ronn].freeze
+
 		def scannable_files
-			@files.reject { |name, _| name.end_with?(".md") }
+			@files.reject { |name, _| SKIP_EXTENSIONS.include?(File.extname(name)) }
 		end
 
 		def ruby_source_files
@@ -563,12 +590,13 @@ module Commissar
 			target = files || scannable_files
 			return if target.empty?
 			patterns.each do |entry|
-				severity, pattern = parse_config_entry(entry)
+				severity, pattern, antipatterns = parse_config_entry(entry)
 				matcher = word_boundary ? /\b#{Regexp.escape(pattern)}\b/ : nil
 				target.each do |filename, content|
 					scan_lines(content, filename).each do |line, file, lineno|
 						next if line.lstrip.start_with?("#")
-					next unless matcher ? line.match?(matcher) : line.include?(pattern)
+						next unless matcher ? line.match?(matcher) : line.include?(pattern)
+						next if antipatterns.any? { |ap| line.include?(ap) }
 						add_finding(category: category, severity: severity, message: pattern, file: file, line: lineno, snippet: line)
 					end
 				end
@@ -576,10 +604,14 @@ module Commissar
 		end
 
 		def parse_config_entry(entry)
-			if entry =~ /\A(CRIT|HIGH|MED|LOW):(.*)\z/
-				[$1, $2]
+			parts = entry.split(/(?<!:):(?!:)/, -1)
+			if parts.first =~ /\A(CRIT|HIGH|MED|LOW)\z/
+				severity     = parts.shift
+				pattern      = parts.shift
+				antipatterns = parts.reject(&:empty?)
+				[severity, pattern, antipatterns]
 			else
-				["MED", entry]
+				["MED", entry, []]
 			end
 		end
 
@@ -617,6 +649,12 @@ module Commissar
 				when "INFO" then :cyan
 			end
 			finding.to_s.colorize(color)
+		end
+
+		def complex_gem_note
+			category = @complex_gems[gem_name]
+			return nil unless category
+			"[i] #{gem_name} is a known complex gem (#{category}). Elevated scores may reflect legitimate functionality, review findings manually!"
 		end
 
 		def score_line

@@ -1,0 +1,28 @@
+bundler:package manager
+rubygems:package manager
+rake:build tool
+thor:build tool
+pry:debugger
+byebug:debugger
+debug:debugger
+ruby-debug:debugger
+binding_of_caller:debugger
+puma:web server
+thin:web server
+unicorn:web server
+passenger:web server
+falcon:web server
+webrick:web server
+rack:web framework
+rackup:web framework
+sinatra:web framework
+rails:web framework
+rubocop:code analyzer
+reek:code analyzer
+brakeman:security scanner
+flog:code analyzer
+flay:code analyzer
+zip:archive tool
+rubyzip:archive tool
+opal:compiler
+nokogiri:html/xml parser

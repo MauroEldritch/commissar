@@ -13,7 +13,8 @@ gem install commissar
 ## Usage
 
 ```
-commissar <gem_name> [version]
+commissar <gem_name> [version] [options]
+commissar --local PATH [options]
 ```
 
 Examples:
@@ -22,15 +23,20 @@ Examples:
 commissar rails
 commissar nokogiri 1.16.0
 commissar --local /tmp/my-gemfile.gem
+commissar rails --format json > commissar.json
+commissar rails --format json | jq
+commissar rails --format table
+commissar rails --output results.csv
+commissar rails --no-color
 ```
 
-Output groups findings by category with severity (`HIGH`, `MED`, `LOW`), file, and line number. A risk score (0–100) and a final recommendation are printed at the end.
+Output groups findings by category with severity (`CRIT`, `HIGH`, `MED`, `LOW`, `INFO`), file, and line number. A risk score (0–100) and a final recommendation are printed at the end.
 
 ## Configuration
 
-On first run, Commissar copies default pattern lists to `~/.config/commissar/`. Edit those files to add or remove patterns without touching the source.
+Pattern lists live in the `conf/` directory of the repo (or the gem's bundled `conf/` when installed). Edit those files directly to add or remove patterns.
 
-Load order: `~/.config/commissar/` → `./conf/` → gem defaults.
+Load order: `./conf/` → gem defaults.
 
 Files:
 
@@ -40,8 +46,43 @@ Files:
 | `suspicious_functions.txt` | Dangerous Ruby methods and classes |
 | `suspicious_shell.txt` | Shell commands used for data exfiltration or staging |
 | `credential_paths.txt` | Filesystem paths and env vars containing secrets and sensitive info |
+| `clipboard_patterns.txt` | System calls and APIs used for clipboard access |
+| `known_bad_wallets.txt` | OFAC-sanctioned and DOJ-documented wallet addresses |
+| `severity.txt` | Numeric weights for each severity level |
 
-Each file is plain text, one entry per line. Lines starting with `#` are ignored. Feel free to fine-tune as much as you need!
+Each file is plain text, one entry per line. Lines starting with `#` are ignored.
+
+### Pattern format
+
+```
+SEVERITY:PATTERN
+```
+
+Examples:
+
+```
+HIGH:eval
+CRIT:api.telegram.org
+MED:pastebin.com
+```
+
+### Antipatterns
+
+Any fields after the first pair are treated as antipatterns: if the line matches the pattern but also contains any antipattern, the finding is suppressed. Useful for reducing false positives from legitimate metaprogramming.
+
+```
+SEVERITY:PATTERN:ANTIPATTERN:ANTIPATTERN:...
+```
+
+Examples:
+
+```
+HIGH:eval:&:binding
+HIGH:instance_eval:&
+HIGH:class_eval:&:__FILE__
+```
+
+`::` in Ruby namespace notation is never treated as a separator, so `MED:Net::HTTP` works as expected.
 
 ## What it detects
 
@@ -54,10 +95,11 @@ Each file is plain text, one entry per line. Lines starting with `#` are ignored
 - Outbound network calls (Telegram bots, Discord webhooks, paste sites, webhook services)
 - `curl`/`wget` POST commands and Ruby HTTP POST equivalents
 - Base64-encoded or zlib-compressed payloads
-- High Shannon entropy strings (>4.5 bits/char)
+- High Shannon entropy strings (>5.5 bits/char)
 - Lines over 500 characters (common in padding and hiding schemes)
 - Access to credentials via `ENV` or filesystem paths
-- Wallet address patterns and clipboard hijacking (Web3)
+- Clipboard hijacking (Web3)
+- Hardcoded wallet addresses: known OFAC/DOJ-sanctioned addresses flagged as `CRIT`, unknown addresses as `HIGH`
 
 ## Development
 

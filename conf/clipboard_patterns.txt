@@ -1,0 +1,5 @@
+HIGH:xclip
+HIGH:pbcopy
+HIGH:pbpaste
+HIGH:xdotool
+HIGH:Clipboard.

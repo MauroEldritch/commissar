@@ -18,6 +18,7 @@ OptionParser.new do |opts|
 		  commissar rails --no-color
 		  commissar rails --format table
 		  commissar rails --format json --output results.json
+		  commissar rails --format json | jq
 		  commissar rails --output results.csv
 
 		Options:
@@ -45,7 +46,6 @@ OptionParser.new do |opts|
 	end
 end.tap { |parser| @parser = parser }.parse!
 
-Commissar::Config.bootstrap_user_dir
 String.disable_colorization = !options[:color]
 
 if options[:local]
@@ -63,7 +63,8 @@ else
 	scanner = Commissar::Scanner.new(ARGV[0], version: ARGV[1])
 end
 
-scanner.scan
+quiet = %i[json csv].include?(options[:format])
+scanner.scan(quiet: quiet)
 
 terminal_format = options[:format] || :text
 scanner.report(format: terminal_format)
