@@ -3,7 +3,7 @@
 require "optparse"
 require_relative "../lib/commissar"
 
-options = { format: nil, color: true, output: nil, local: nil }
+options = { format: nil, color: true, output: nil, local: nil, score_only: false }
 
 OptionParser.new do |opts|
 	opts.banner = <<~BANNER
@@ -20,6 +20,8 @@ OptionParser.new do |opts|
 		  commissar rails --format json --output results.json
 		  commissar rails --format json | jq
 		  commissar rails --output results.csv
+		  commissar rails --score-only
+		  [ $(commissar rails --score-only) -lt 40 ] && gem install rails
 
 		Options:
 	BANNER
@@ -38,6 +40,10 @@ OptionParser.new do |opts|
 
 	opts.on("--format FORMAT", %w[text csv json table], "Output format: text, csv, json, table") do |fmt|
 		options[:format] = fmt.to_sym
+	end
+
+	opts.on("--score-only", "Output only the integer risk score (for CI/CD integration)") do
+		options[:score_only] = true
 	end
 
 	opts.on("-h", "--help", "Show this help") do
@@ -61,6 +67,12 @@ elsif ARGV.empty?
 	exit 1
 else
 	scanner = Commissar::Scanner.new(ARGV[0], version: ARGV[1])
+end
+
+if options[:score_only]
+	scanner.scan(quiet: true)
+	puts scanner.risk_score
+	exit
 end
 
 quiet = %i[json csv].include?(options[:format])

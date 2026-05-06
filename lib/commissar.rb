@@ -6,8 +6,6 @@ require "json"
 require "yaml"
 require "tmpdir"
 require "fileutils"
-require "zlib"
-require "base64"
 require "time"
 require "set"
 require "csv"
@@ -524,8 +522,9 @@ module Commissar
 						end
 					end
 					@clipboard_patterns.each do |entry|
-						severity, pattern = parse_config_entry(entry)
+						severity, pattern, antipatterns = parse_config_entry(entry)
 						next unless line.include?(pattern)
+						next if antipatterns.any? { |ap| line.include?(ap) }
 						add_finding(category: "WEB3", severity: severity, message: "Clipboard access: #{pattern}", file: file, line: lineno, snippet: line)
 					end
 				end

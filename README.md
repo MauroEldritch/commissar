@@ -20,17 +20,35 @@ commissar --local PATH [options]
 Examples:
 
 ```
+#Normal use
 commissar rails
+
+#Scan a specific version
 commissar nokogiri 1.16.0
+
+#Scan a local gem
 commissar --local /tmp/my-gemfile.gem
+
+#JSON output to screen or to file
 commissar rails --format json > commissar.json
 commissar rails --format json | jq
+
+#Table format
 commissar rails --format table
+
+#CSV (format is assumed from the output file extension)
 commissar rails --output results.csv
+
+#No colour, please
 commissar rails --no-color
+
+#I just want the score for my automation tool/pipeline
+commissar rails --score-only
 ```
 
 Output groups findings by category with severity (`CRIT`, `HIGH`, `MED`, `LOW`, `INFO`), file, and line number. A risk score (0–100) and a final recommendation are printed at the end.
+
+You can use `--score-only` to quickly integrate Commissar with your CI/CD pipelines. You will get a plain integer representing the risk score alone, without banner or any other information.
 
 ## Configuration
 
@@ -105,6 +123,12 @@ HIGH:class_eval:&:__FILE__
 bundle install
 rake test
 ```
+
+## Contributing
+
+I appreciate your interest! Feel free to tweak the configuration files and detection expressions and share them with me and the community, always happy to hear back from users of my tools.
+
+If you believe your change deserves a dedicated fork, go for it!
 
 ## License
 
