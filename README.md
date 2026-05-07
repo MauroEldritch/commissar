@@ -64,6 +64,7 @@ Files:
 | `credential_paths.txt` | Filesystem paths and env vars containing secrets and sensitive info |
 | `clipboard_patterns.txt` | System calls and APIs used for clipboard access |
 | `known_bad_wallets.txt` | OFAC-sanctioned and DOJ-documented wallet addresses |
+| `complex_gems.txt` | Known complex gems that receive a contextual note on elevated scores |
 | `severity.txt` | Numeric weights for each severity level |
 
 Each file is plain text, one entry per line. Lines starting with `#` are ignored.
@@ -129,6 +130,10 @@ rake test
 I appreciate your interest! Feel free to tweak the configuration files and detection expressions and share them with me and the community, always happy to hear back from users of my tools.
 
 If you believe your change deserves a dedicated fork, go for it!
+
+Please report any bugs or false positives, I'll be happy to work on them.
+
+/ ! \ Remember this tool could mistake some constructions for dangerous code or functions, or could even skip real ones, it's not failproof, so always DYOR.
 
 ## License
 
