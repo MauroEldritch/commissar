@@ -98,23 +98,25 @@ module Commissar
 			@findings   = []
 			@metadata   = {}
 			@files      = {}
+			@spec       = nil
 			@owners     = :pending
 			@suspicious_urls      = Config.load("suspicious_urls.txt")
 			@suspicious_functions = Config.load("suspicious_functions.txt")
 			@suspicious_shell     = Config.load("suspicious_shell.txt")
 			@credential_paths     = Config.load("credential_paths.txt")
-			@clipboard_patterns   = Config.load("clipboard_patterns.txt")
-			@known_bad_wallets    = Config.load_known_wallets
+			@clipboard_patterns      = Config.load("clipboard_patterns.txt")
+			@post_install_patterns   = Config.load("post_install_patterns.txt")
+			@known_bad_wallets       = Config.load_known_wallets
 			@complex_gems         = Config.load_complex_gems
 			@top_gems             = Config.load("top_gems.txt")
 		end
 
 		def scan(quiet: false)
 			puts "\n#{"[*] Scanning: #{gem_name}".colorize(:white)} #{version_label}" unless quiet
-			fetch_metadata
+			fetch_metadata unless @local_path
 			fetch_and_unpack
 			run_metadata_checks
-			run_diff_checks
+			run_diff_checks unless @local_path
 			run_gemspec_checks
 			run_function_checks
 			run_url_checks
@@ -234,14 +236,14 @@ module Commissar
 
 		def fetch_and_unpack
 			if @local_path
-				@files = unpack_gem(@local_path)
+				@files, @spec = unpack_gem(@local_path)
 				return
 			end
 
 			Dir.mktmpdir("commissar_") do |tmpdir|
 				gem_path = download_gem(tmpdir)
 				return unless gem_path
-				@files = unpack_gem(gem_path)
+				@files, @spec = unpack_gem(gem_path)
 			end
 		end
 
@@ -262,7 +264,8 @@ module Commissar
 			extract_dir = nil
 			files = {}
 			extract_dir = Dir.mktmpdir("commissar_x_")
-			pkg = Gem::Package.new(gem_path)
+			pkg  = Gem::Package.new(gem_path)
+			spec = pkg.spec
 			pkg.extract_files(extract_dir)
 			pkg.contents.each do |entry|
 				full_path = File.join(extract_dir, entry)
@@ -270,10 +273,10 @@ module Commissar
 				next if File.size(full_path) > 1_048_576
 				files[entry] = safe_read(full_path)
 			end
-			files
+			[files, spec]
 		rescue => e
 			warn "  Could not unpack gem: #{e.message}".colorize(:yellow)
-			{}
+			[{}, nil]
 		ensure
 			FileUtils.rm_rf(extract_dir) if extract_dir
 		end
@@ -314,7 +317,7 @@ module Commissar
 			Dir.mktmpdir("commissar_diff_") do |tmpdir|
 				gem_path = download_gem(tmpdir, version: prev_version_num)
 				return unless gem_path
-				prev_files = unpack_gem(gem_path)
+				prev_files, _prev_spec = unpack_gem(gem_path)
 				check_version_diff(prev_files, prev_version_num)
 			end
 		end
@@ -394,43 +397,41 @@ module Commissar
 		end
 
 		def run_gemspec_checks
-			gemspecs = @files.select { |name, _| name.end_with?(".gemspec") }
-			return if gemspecs.empty?
-			gemspecs.each do |filename, content|
-				next if content.nil?
-				check_gemspec_extensions(content, filename)
-				check_gemspec_post_install(content, filename)
-			end
+			return unless @spec
+			check_gemspec_extensions
+			check_gemspec_post_install
 		end
 
-		def check_gemspec_extensions(content, filename)
-			scan_lines(content, filename).each do |line, file, lineno|
-				next unless line.match?(/\.extensions\s*[=<]/)
-				if line.match?(/extconf\.rb|Rakefile/i)
+		def check_gemspec_extensions
+			return if @spec.extensions.empty?
+			@spec.extensions.each do |ext|
+				if ext.match?(/Rakefile/i)
 					add_finding(
 						category: "GEMSPEC", severity: "HIGH",
-						message: "Native extension executes on gem install: #{line.strip}",
-						file: file, line: lineno, snippet: line
+						message: "Native extension executes on gem install: #{ext}"
 					)
 				else
 					add_finding(
 						category: "GEMSPEC", severity: "MED",
-						message: "Native extension declared in gemspec",
-						file: file, line: lineno, snippet: line
+						message: "Native extension declared in gemspec: #{ext}"
 					)
 				end
 			end
 		end
 
-		def check_gemspec_post_install(content, filename)
-			scan_lines(content, filename).each do |line, file, lineno|
-				next unless line.match?(/post_install_message\s*=/)
-				next unless line.match?(/https?:\/\/|curl\s|wget\s|sudo\s|chmod\s/i)
+		def check_gemspec_post_install
+			msg = @spec.post_install_message.to_s.strip
+			return if msg.empty?
+			@post_install_patterns.each do |entry|
+				severity, pattern, antipatterns = parse_config_entry(entry)
+				next unless msg.include?(pattern)
+				next if antipatterns.any? { |ap| msg.include?(ap) }
 				add_finding(
-					category: "GEMSPEC", severity: "MED",
+					category: "GEMSPEC", severity: severity,
 					message: "Suspicious post_install_message content",
-					file: file, line: lineno, snippet: line
+					snippet: truncate(msg)
 				)
+				break
 			end
 		end
 

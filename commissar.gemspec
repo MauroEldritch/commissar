@@ -15,6 +15,7 @@ Gem::Specification.new do |spec|
     "source_code_uri"       => "https://github.com/mauroeldritch/commissar",
     "rubygems_mfa_required" => "true"
   }
+  spec.date              = Time.now.strftime("%Y-%m-%d")
   spec.required_ruby_version = ">= 3.1"
   spec.files = Dir[
     "lib/**/*.rb",

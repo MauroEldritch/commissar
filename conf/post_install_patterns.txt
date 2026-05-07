@@ -1,0 +1,5 @@
+MED:http
+MED:curl
+MED:wget
+MED:sudo
+MED:chmod
